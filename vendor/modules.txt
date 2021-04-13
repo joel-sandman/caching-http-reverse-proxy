@@ -1,0 +1,8 @@
+# github.com/cssivision/reverseproxy v0.0.1
+## explicit
+# github.com/hashicorp/terraform v0.14.10
+## explicit
+github.com/hashicorp/terraform/helper/hashcode
+# github.com/patrickmn/go-cache v2.1.0+incompatible
+## explicit
+github.com/patrickmn/go-cache
