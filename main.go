@@ -25,31 +25,32 @@ import (
 
 var Cache cache.Cache
 var expiration int
+// var hash string
 
-func rewriteBody(resp *http.Response) (err error) {
-    b, err := ioutil.ReadAll(resp.Body)
-    if err != nil {
-        return  err
-    }
-    err = resp.Body.Close()
-    if err != nil {
-        return err
-    }
+// func rewriteBody(resp *http.Response) (err error) {
+//     b, err := ioutil.ReadAll(resp.Body)
+//     if err != nil {
+//         return  err
+//     }
+//     err = resp.Body.Close()
+//     if err != nil {
+//         return err
+//     }
 
-    hash := hashcode.Strings([]string{string(b)})
-    if _, found := Cache.Get(hash); found {
-        log.Printf("Found in cache!")
-    } else {
-        log.Printf("NOT found in cache!")
-        Cache.Set(hash, b, time.Duration(expiration)*time.Millisecond)
-    }
+//     // hash := hashcode.Strings([]string{string(b)})
+//     if _, found := Cache.Get(hash); found {
+//         log.Printf("Found in cache!")
+//     } else {
+//         log.Printf("NOT found in cache!")
+//         Cache.Set(hash, b, time.Duration(expiration)*time.Millisecond)
+//     }
 
-    body := ioutil.NopCloser(bytes.NewReader(b))
-    resp.Body = body
-    resp.ContentLength = int64(len(b))
-    resp.Header.Set("Content-Length", strconv.Itoa(len(b)))
-    return nil
-}
+//     body := ioutil.NopCloser(bytes.NewReader(b))
+//     resp.Body = body
+//     resp.ContentLength = int64(len(b))
+//     resp.Header.Set("Content-Length", strconv.Itoa(len(b)))
+//     return nil
+// }
 
 // func main() {
 //     handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -90,15 +91,58 @@ func main() {
     Cache = *cache.New(10*time.Second, 60*time.Second)
     expiration = 60000
 
-	proxy := httputil.NewSingleHostReverseProxy(u)
-	director := proxy.Director
-	proxy.Director = func(req *http.Request) {
-		director(req)
-	}
-    proxy.ModifyResponse = rewriteBody
+    handler := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+        reqBody, err := ioutil.ReadAll(req.Body)
+        if err != nil {
+            log.Printf("Error reading req body")
+        }
+        err = req.Body.Close()
+        if err != nil {
+            log.Printf("Error closing req body")
+        }
+        reqURL := req.URL.String()
+        hash := hashcode.Strings([]string{reqURL, string(reqBody)})
+        proxy := httputil.NewSingleHostReverseProxy(u)
+        proxy.ModifyResponse = func(res *http.Response) error {
+            resBody, err := ioutil.ReadAll(res.Body)
+            if err != nil {
+                return  err
+            }
+            err = res.Body.Close()
+            if err != nil {
+                return err
+            }
+            if _, found := Cache.Get(hash); found {
+                log.Printf("Found in cache!")
+            } else {
+                log.Printf("NOT found in cache!")
+                Cache.Set(hash, resBody, time.Duration(expiration)*time.Millisecond)
+            }
+        
+            newResbody := ioutil.NopCloser(bytes.NewReader(resBody))
+            res.Body = newResbody
+            res.ContentLength = int64(len(resBody))
+            res.Header.Set("Content-Length", strconv.Itoa(len(resBody)))
+            return nil
+        }
+        newReqbody := ioutil.NopCloser(bytes.NewReader(reqBody))
+        req.Body = newReqbody
+        req.ContentLength = int64(len(reqBody))
+        req.Header.Set("Content-Length", strconv.Itoa(len(reqBody)))
+        proxy.ServeHTTP(w, req)
+    })
 
-	http.HandleFunc("/", proxy.ServeHTTP)
-	log.Fatal(http.ListenAndServe(port, nil))
+    log.Fatal(http.ListenAndServe(port, handler))
+
+	// proxy := httputil.NewSingleHostReverseProxy(u)
+	// director := proxy.Director
+	// proxy.Director = func(req *http.Request) {
+	// 	director(req)
+	// }
+    // proxy.ModifyResponse = rewriteBody
+
+	// http.HandleFunc("/", proxy.ServeHTTP)
+	// log.Fatal(http.ListenAndServe(port, nil))
 }
 
 func memoryUsageStatus() {
