@@ -10,7 +10,7 @@ package main
 import (
 	"bytes"
 	// "encoding/json"
-    // "fmt"
+    "fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -112,11 +112,23 @@ func main() {
             if err != nil {
                 return err
             }
-            if _, found := Cache.Get(hash); found {
+            if cachedValue, found := Cache.Get(hash); found {
                 log.Printf("Found in cache!")
+                cachedValueString := fmt.Sprintf("%v", cachedValue)
+                // cachedValueString := string(cachedValueBytes)
+
+                // log.Printf("Cached Value: %s", firstN(cachedValueString, 500))
+                // log.Printf("Response: %s", firstN(string(resBody), 500))
+                // match := "stale"
+                if string(resBody) == cachedValueString {
+                    // match = "fresh"
+                    log.Printf("Fresh data in cache")
+                } else {
+                    log.Printf("Stale data in cache")
+                }
             } else {
                 log.Printf("NOT found in cache!")
-                Cache.Set(hash, resBody, time.Duration(expiration)*time.Millisecond)
+                Cache.Set(hash, string(resBody), time.Duration(expiration)*time.Millisecond)
             }
         
             newResbody := ioutil.NopCloser(bytes.NewReader(resBody))
@@ -168,4 +180,11 @@ func memoryUsageStatus() {
 
 		// csvLog.Printf("%d,%d,%d", time.Now().UnixNano(), items, size)
 	}
+}
+
+func firstN(s string, n int) string {
+    if len(s) > n {
+         return s[:n]
+    }
+    return s
 }
