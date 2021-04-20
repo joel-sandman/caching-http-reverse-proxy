@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+    "regexp"
     "os"
     "strconv"
     "time"
@@ -31,6 +32,8 @@ func main() {
 	if err != nil {
 		log.Fatalf("PROXY_LISTEN_PORT cannot be parsed as integer")
 	}
+
+    blacklistedExpressions := os.Getenv("PROXY_CACHE_BLACKLIST")
 
 	path, err := url.Parse(fmt.Sprintf("http://%s", os.Getenv("FRONTEND_ADDR")))
 	if err != nil {
@@ -81,6 +84,9 @@ func main() {
                 // log.Printf("Found in cache!")
                 cachedValueString := fmt.Sprintf("%v", cachedValue)
 
+                log.Printf("ResBody: %s\n\n", string(resBody))
+                log.Printf("cachedV: %s\n\n", cachedValueString)
+
                 resSize := len(resBody)
                 totSize := reqSize + resSize
 
@@ -91,20 +97,35 @@ func main() {
                 } else {
                     log.Printf("Stale data in cache")
                 }
+
+                cachedValueBytes := []byte(cachedValueString)
+                newResbody := ioutil.NopCloser(bytes.NewReader(cachedValueBytes))
+                res.Body = newResbody
+                res.ContentLength = int64(len(cachedValueBytes))
+                res.Header.Set("Content-Length", strconv.Itoa(len(cachedValueBytes)))
+
                 csvLog.Printf("%d,cache,%s,%d,%s(%s)\n", time.Now().UnixNano(), match, totSize, reqUrl, hash)
             } else {
                 // log.Printf("NOT found in cache!")
+
                 resSize := len(resBody)
                 totSize := reqSize + resSize
 
-                proxyCache.Set(hash, string(resBody), time.Duration(expiration)*time.Millisecond)
-                csvLog.Printf("%d,downstream,,%d,%s(%s)\n", time.Now().UnixNano(), totSize, reqUrl, hash)
+                newResbody := ioutil.NopCloser(bytes.NewReader(resBody))
+                res.Body = newResbody
+                res.ContentLength = int64(len(resBody))
+                res.Header.Set("Content-Length", strconv.Itoa(len(resBody)))
+
+                if blacklisted(blacklistedExpressions, reqUrl) {
+                    log.Printf("%s is blacklisted", reqUrl)
+                    csvLog.Printf("%d,downstream,blacklisted,%d,%s(%s)\n", time.Now().UnixNano(), totSize, reqUrl, hash)
+                } else {
+                    log.Printf("response for %s cached", reqUrl)
+                    proxyCache.Set(hash, string(resBody), time.Duration(expiration)*time.Millisecond)
+                    csvLog.Printf("%d,downstream,,%d,%s(%s)\n", time.Now().UnixNano(), totSize, reqUrl, hash)
+                }
             }
         
-            newResbody := ioutil.NopCloser(bytes.NewReader(resBody))
-            res.Body = newResbody
-            res.ContentLength = int64(len(resBody))
-            res.Header.Set("Content-Length", strconv.Itoa(len(resBody)))
             return nil
         }
         newReqbody := ioutil.NopCloser(bytes.NewReader(reqBody))
@@ -135,4 +156,12 @@ func memoryUsageStatus(proxyCache cache.Cache, csvLog *log.Logger) {
 
 		csvLog.Printf("%d,%d,%d", time.Now().UnixNano(), items, size)
 	}
+}
+
+func blacklisted(blacklistedExpressions, method string) bool {
+	blacklisted, err := regexp.Match(blacklistedExpressions, []byte(method))
+	if err == nil && blacklisted {
+		return true
+	}
+	return false
 }
