@@ -81,7 +81,6 @@ func main() {
                 return err
             }
             if cachedValue, found := proxyCache.Get(hash); found {
-                // log.Printf("Found in cache!")
                 cachedValueString := fmt.Sprintf("%v", cachedValue)
 
                 log.Printf("ResBody: %s\n\n", string(resBody))
@@ -106,8 +105,6 @@ func main() {
 
                 csvLog.Printf("%d,cache,%s,%d,%s(%s)\n", time.Now().UnixNano(), match, totSize, reqUrl, hash)
             } else {
-                // log.Printf("NOT found in cache!")
-
                 resSize := len(resBody)
                 totSize := reqSize + resSize
 
@@ -141,7 +138,7 @@ func main() {
 func memoryUsageStatus(proxyCache cache.Cache, csvLog *log.Logger) {
 	csvLog.Printf("timestamp,items,bytes")
 	for {
-		time.Sleep(15 * time.Second)
+		time.Sleep(2 * time.Second)
 		proxyCache.DeleteExpired()
 		items := proxyCache.ItemCount()
 		log.Printf("Items in cache: %d", items)
