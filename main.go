@@ -28,6 +28,11 @@ func main() {
 		log.Fatalf("TTL cannot be parsed as integer")
 	}
 
+    shouldCache := false
+    if expiration > 0 {
+        shouldCache = true
+    }
+
     port, err := strconv.Atoi(os.Getenv("PROXY_LISTEN_PORT"))
 	if err != nil {
 		log.Fatalf("PROXY_LISTEN_PORT cannot be parsed as integer")
@@ -40,7 +45,7 @@ func main() {
 		log.Fatalf("Could not parse downstream url: %s", path)
 	}
 
-    proxyCache := *cache.New(10*time.Second, 60*time.Second)
+    proxyCache := *cache.New(0*time.Second, 60*time.Second)
 
     memoryUsageCsvFile, err := os.Create(memoryUsageCsvFileName)
 	if err != nil {
@@ -118,11 +123,12 @@ func main() {
                     csvLog.Printf("%d,downstream,blacklisted,%d,%s(%s)\n", time.Now().UnixNano(), totSize, reqUrl, hash)
                 } else {
                     log.Printf("response for %s cached", reqUrl)
-                    proxyCache.Set(hash, string(resBody), time.Duration(expiration)*time.Millisecond)
+                    if shouldCache {
+                        proxyCache.Set(hash, string(resBody), time.Duration(expiration)*time.Millisecond)
+                    }
                     csvLog.Printf("%d,downstream,,%d,%s(%s)\n", time.Now().UnixNano(), totSize, reqUrl, hash)
                 }
             }
-        
             return nil
         }
         newReqbody := ioutil.NopCloser(bytes.NewReader(reqBody))
